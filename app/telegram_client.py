@@ -54,6 +54,25 @@ class AccountClientManager:
             return {"ok": False, "retry_after": getattr(e, "seconds", 60)}
         except PhoneNumberInvalidError:
             return {"ok": False, "error": "phone_invalid"}
+        except Exception as e:
+            msg = str(e) if e else ""
+            if "authorization key" in msg or "AuthKey" in msg:
+                try:
+                    sb = os.path.join(CONFIG.SESSION_DIR, self.session_name)
+                    for p in [f"{sb}.session", f"{sb}.session-journal"]:
+                        try:
+                            os.remove(p)
+                        except Exception:
+                            pass
+                    await self.client.disconnect()
+                    self.client = TelegramClient(sb, self.api_id, self.api_hash, loop=loop)
+                    await self.client.connect()
+                    resp = await self.client.send_code_request(phone, force_sms=force_sms)
+                    print(resp)
+                    return {"ok": True}
+                except Exception as e2:
+                    return {"ok": False, "error": str(e2)}
+            return {"ok": False, "error": msg or "send_code_failed"}
 
     async def confirm_login(self, phone: str, code: str, password: str | None = None):
         await self._ensure_client()
